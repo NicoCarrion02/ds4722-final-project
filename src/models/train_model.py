@@ -5,10 +5,18 @@ Script de entrenamiento para el modelo final y evaluación básica.
 import pandas as pd
 import joblib
 from pathlib import Path
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error
+import numpy as np
 
-# IMPORTANTE: Se debe importar los algoritmos que quieran usar, por ejemplo:
-# from sklearn.ensemble import RandomForestRegressor
-# from sklearn.metrics import mean_squared_error
+TARGET_COLUMN = "median_house_value"
+
+BEST_MODEL_PARAMS = {
+    "n_estimators": 205,
+    "max_features": 6,
+    "n_jobs": -1,
+    "random_state": 42,
+}
 
 def train_best_model(processed_train_data_path: str, model_save_path: str):
     """
@@ -20,7 +28,24 @@ def train_best_model(processed_train_data_path: str, model_save_path: str):
     4. Entrena el modelo haciendo fit(X, y).
     5. Guarda el modelo entrenado en `model_save_path` (ej. 'models/best_model.pkl') usando joblib.dump().
     """
-    pass
+    train_path = Path(processed_train_data_path)
+    model_path = Path(model_save_path)
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+
+    train_df = pd.read_csv(train_path)
+    if TARGET_COLUMN not in train_df.columns:
+        raise ValueError(f"No se encontró la columna objetivo '{TARGET_COLUMN}' en {train_path}.")
+
+    X_train = train_df.drop(columns=[TARGET_COLUMN])
+    y_train = train_df[TARGET_COLUMN]
+
+    model = RandomForestRegressor(**BEST_MODEL_PARAMS)
+    model.fit(X_train, y_train)
+
+    joblib.dump(model, model_path)
+    print(f"Modelo entrenado y guardado en: {model_path}")
+
+    return model
 
 def evaluate_model(model_path: str, processed_test_data_path: str):
     """
@@ -30,12 +55,30 @@ def evaluate_model(model_path: str, processed_test_data_path: str):
     3. Genera predicciones (y_pred) sobre los datos de prueba usando predict().
     4. Compara y_pred con las etiquetas reales calculando el RMSE y repórtalo en la terminal.
     """
-    pass
+    model_path = Path(model_path)
+    test_path = Path(processed_test_data_path)
+
+    model = joblib.load(model_path)
+    test_df = pd.read_csv(test_path)
+
+    if TARGET_COLUMN not in test_df.columns:
+        raise ValueError(f"No se encontró la columna objetivo '{TARGET_COLUMN}' en {test_path}.")
+
+    X_test = test_df.drop(columns=[TARGET_COLUMN])
+    y_test = test_df[TARGET_COLUMN]
+
+    y_pred = model.predict(X_test)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+
+    print(f"RMSE en el set de prueba: {rmse:.4f}")
+    return rmse
 
 if __name__ == "__main__":
-    # PROCESSED_TRAIN_PATH = "data/processed/train_processed.csv"
-    # PROCESSED_TEST_PATH = "data/processed/test_processed.csv"
-    # MODEL_OUTPUT_PATH = "models/best_model.pkl"
-    # train_best_model(PROCESSED_TRAIN_PATH, MODEL_OUTPUT_PATH)
-    # evaluate_model(MODEL_OUTPUT_PATH, PROCESSED_TEST_PATH)
-    print("Script de entrenamiento final... (Falta el código!)")
+    project_root = Path(__file__).resolve().parent.parent.parent
+
+    PROCESSED_TRAIN_PATH = project_root / "data" / "processed" / "train_set.csv"
+    PROCESSED_TEST_PATH = project_root / "data" / "processed" / "test_set.csv"
+    MODEL_OUTPUT_PATH = project_root / "models" / "best_model.pkl"
+
+    train_best_model(str(PROCESSED_TRAIN_PATH), str(MODEL_OUTPUT_PATH))
+    evaluate_model(str(MODEL_OUTPUT_PATH), str(PROCESSED_TEST_PATH))
