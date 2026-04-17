@@ -2,15 +2,84 @@
 API Básica usando FastAPI para servir el modelo entrenado.
 """
 
+import sys
+from pathlib import Path
+from contextlib import asynccontextmanager
+import sys
+from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel
 import joblib
 import pandas as pd
+from enum import Enum
+
+# Permite ejecutar este archivo directamente: python src/api/main.py
+if __package__ is None or __package__ == "":
+    project_root = Path(__file__).resolve().parents[2]
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
+from src.features.build_features import preprocess_pipeline
+
+model = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan event handler para cargar el modelo al iniciar.
+    """
+    global model
+    try:
+        model = joblib.load("models/best_model.pkl")
+        print("Modelo cargado correctamente")
+    except Exception as e:
+        print(f"Error cargando modelo: {e}")
+    yield
+from enum import Enum
+
+# Permite ejecutar este archivo directamente: python src/api/main.py
+if __package__ is None or __package__ == "":
+    project_root = Path(__file__).resolve().parents[2]
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
+from src.features.build_features import preprocess_pipeline
+
+model = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan event handler para cargar el modelo al iniciar.
+    """
+    global model
+    try:
+        model = joblib.load("models/best_model.pkl")
+        print("Modelo cargado correctamente")
+    except Exception as e:
+        print(f"Error cargando modelo: {e}")
+    yield
 
 # Inicializamos la app
-app = FastAPI(title="API de Predicción de Precios de Vivienda (California)", version="1.0")
+app = FastAPI(title="API de Predicción de Precios de Vivienda (California)", version="1.0", lifespan=lifespan)
 
-# INSTRUCCIONES: Define el esquema de datos esperado por la API (Las variables X que usa tu modelo)
+class OceanProximity(str, Enum):
+    LESS_THAN_1H_OCEAN = "<1H OCEAN"
+    INLAND = "INLAND"
+    NEAR_OCEAN = "NEAR OCEAN"
+    NEAR_BAY = "NEAR BAY"
+    ISLAND = "ISLAND"
+
+app = FastAPI(title="API de Predicción de Precios de Vivienda (California)", version="1.0", lifespan=lifespan)
+
+class OceanProximity(str, Enum):
+    LESS_THAN_1H_OCEAN = "<1H OCEAN"
+    INLAND = "INLAND"
+    NEAR_OCEAN = "NEAR OCEAN"
+    NEAR_BAY = "NEAR BAY"
+    ISLAND = "ISLAND"
+
 class HousingFeatures(BaseModel):
     longitude: float
     latitude: float
@@ -20,24 +89,8 @@ class HousingFeatures(BaseModel):
     population: float
     households: float
     median_income: float
-    # Añade cualquier variable categórica o enriquecida que el modelo requiera
-    # ej: ocean_proximity: str 
-    # ej: rooms_per_household: float
-
-# Variable global para cargar el modelo
-# IMPORTANTE: Asegúrate de guardar tu modelo en "models/best_model.pkl" o ajusta la ruta
-model = None
-
-@app.on_event("startup")
-def load_model():
-    """
-    Carga el modelo globalmente al iniciar el servidor usando joblib.
-    """
-    global model
-    try:
-        model = joblib.load("models/best_model.pkl")
-    except Exception as e:
-        print("Advertencia: No se pudo cargar el modelo. ¿Ya lo entrenaste y guardaste?")
+    ocean_proximity: OceanProximity
+    ocean_proximity: OceanProximity
 
 @app.get("/")
 def home():
@@ -55,11 +108,54 @@ def predict_price(features: HousingFeatures):
     if model is None:
         return {"error": "El modelo no se ha cargado."}
     
-    # Tu código aquí para predecir
-    prediction = 0.0 # Reemplazar con model.predict()
-    
-    return {"predicted_price": prediction}
+    # 1. Convertir input a DataFrame
+    input_data = pd.DataFrame([features.model_dump()])
+
+    # 2. Aplicar pipeline de features (MISMA lógica que entrenamiento)
+    processed_data = preprocess_pipeline(input_data, ignore_cleaning=True) # asumiendo que el input ya viene limpio, solo queremos crear features y codificar
+
+    # 3. Asegurar mismo orden de columnas
+    processed_data = processed_data.reindex(columns=model.feature_names_in_, fill_value=0)
+
+    # 4. Predecir
+    prediction = model.predict(processed_data)[0]
+
+    return {"predicted_price": float(prediction)}
+    # 1. Convertir input a DataFrame
+    input_data = pd.DataFrame([features.model_dump()])
+
+    # 2. Aplicar pipeline de features (MISMA lógica que entrenamiento)
+    processed_data = preprocess_pipeline(input_data, ignore_cleaning=True) # asumiendo que el input ya viene limpio, solo queremos crear features y codificar
+
+    # 3. Asegurar mismo orden de columnas
+    processed_data = processed_data.reindex(columns=model.feature_names_in_, fill_value=0)
+
+    # 4. Predecir
+    prediction = model.predict(processed_data)[0]
+
+    return {"predicted_price": float(prediction)}
 
 # Instrucciones para correr la API localmente:
 # En la terminal, ejecuta:
 # uvicorn src.api.main:app --reload
+
+"""
+Ejemplo:
+
+{
+  "longitude": -121.95,
+  "latitude": 37.11,
+  "housing_median_age": 21.0,
+  "total_rooms": 2387.0,
+  "total_bedrooms": 357.0,
+  "population": 913.0,
+  "households": 341.0,
+  "median_income": 7.736,
+  "ocean_proximity": "<1H OCEAN"
+}
+
+Respuesta esperada:
+{
+  "predicted_price": 410030.9512195122
+}
+"""
