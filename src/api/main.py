@@ -5,10 +5,37 @@ API Básica usando FastAPI para servir el modelo entrenado.
 import sys
 from pathlib import Path
 from contextlib import asynccontextmanager
+import sys
+from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel
 import joblib
 import pandas as pd
+from enum import Enum
+
+# Permite ejecutar este archivo directamente: python src/api/main.py
+if __package__ is None or __package__ == "":
+    project_root = Path(__file__).resolve().parents[2]
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
+from src.features.build_features import preprocess_pipeline
+
+model = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan event handler para cargar el modelo al iniciar.
+    """
+    global model
+    try:
+        model = joblib.load("models/best_model.pkl")
+        print("Modelo cargado correctamente")
+    except Exception as e:
+        print(f"Error cargando modelo: {e}")
+    yield
 from enum import Enum
 
 # Permite ejecutar este archivo directamente: python src/api/main.py
@@ -44,6 +71,15 @@ class OceanProximity(str, Enum):
     NEAR_BAY = "NEAR BAY"
     ISLAND = "ISLAND"
 
+app = FastAPI(title="API de Predicción de Precios de Vivienda (California)", version="1.0", lifespan=lifespan)
+
+class OceanProximity(str, Enum):
+    LESS_THAN_1H_OCEAN = "<1H OCEAN"
+    INLAND = "INLAND"
+    NEAR_OCEAN = "NEAR OCEAN"
+    NEAR_BAY = "NEAR BAY"
+    ISLAND = "ISLAND"
+
 class HousingFeatures(BaseModel):
     longitude: float
     latitude: float
@@ -53,6 +89,7 @@ class HousingFeatures(BaseModel):
     population: float
     households: float
     median_income: float
+    ocean_proximity: OceanProximity
     ocean_proximity: OceanProximity
 
 @app.get("/")
@@ -71,6 +108,19 @@ def predict_price(features: HousingFeatures):
     if model is None:
         return {"error": "El modelo no se ha cargado."}
     
+    # 1. Convertir input a DataFrame
+    input_data = pd.DataFrame([features.model_dump()])
+
+    # 2. Aplicar pipeline de features (MISMA lógica que entrenamiento)
+    processed_data = preprocess_pipeline(input_data, ignore_cleaning=True) # asumiendo que el input ya viene limpio, solo queremos crear features y codificar
+
+    # 3. Asegurar mismo orden de columnas
+    processed_data = processed_data.reindex(columns=model.feature_names_in_, fill_value=0)
+
+    # 4. Predecir
+    prediction = model.predict(processed_data)[0]
+
+    return {"predicted_price": float(prediction)}
     # 1. Convertir input a DataFrame
     input_data = pd.DataFrame([features.model_dump()])
 
