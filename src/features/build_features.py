@@ -74,11 +74,15 @@ def encode_categorical(df: pd.DataFrame) -> pd.DataFrame:
 
     return df_encoded
 
-def preprocess_pipeline(df: pd.DataFrame, clean_data_kwargs: dict = {}) -> pd.DataFrame:
+def preprocess_pipeline(df: pd.DataFrame, clean_data_kwargs: dict = {}, **kwargs) -> pd.DataFrame:
     """
     Función orquestadora que toma el DataFrame crudo y aplica limpieza y enriquecimiento.
     """
-    df_clean = clean_data(df, **clean_data_kwargs)
+    ignore_cleaning = kwargs.get("ignore_cleaning", False)
+    if ignore_cleaning:
+        df_clean = df.copy()
+    else:
+        df_clean = clean_data(df, **clean_data_kwargs)
     df_featured = create_features(df_clean)
     df_processed = encode_categorical(df_featured)
 
