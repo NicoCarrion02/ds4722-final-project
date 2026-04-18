@@ -121,19 +121,6 @@ def predict_price(features: HousingFeatures):
     prediction = model.predict(processed_data)[0]
 
     return {"predicted_price": float(prediction)}
-    # 1. Convertir input a DataFrame
-    input_data = pd.DataFrame([features.model_dump()])
-
-    # 2. Aplicar pipeline de features (MISMA lógica que entrenamiento)
-    processed_data = preprocess_pipeline(input_data, ignore_cleaning=True) # asumiendo que el input ya viene limpio, solo queremos crear features y codificar
-
-    # 3. Asegurar mismo orden de columnas
-    processed_data = processed_data.reindex(columns=model.feature_names_in_, fill_value=0)
-
-    # 4. Predecir
-    prediction = model.predict(processed_data)[0]
-
-    return {"predicted_price": float(prediction)}
 
 # Instrucciones para correr la API localmente:
 # En la terminal, ejecuta:
